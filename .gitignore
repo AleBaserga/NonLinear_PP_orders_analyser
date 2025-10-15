@@ -1,0 +1,12 @@
+# MATLAB cache / backups
+*.asv
+*.mex*
+
+# Build and output
+*.log
+*.bak
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
