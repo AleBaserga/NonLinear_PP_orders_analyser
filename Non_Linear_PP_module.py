@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-Created on Thu Oct  9 14:33:32 2025
+This is an module that implements the nonlinear PP calculations of the article:
+Malý, P., Lüttig, J., Rose, P.A. et al. Separating single- from multi-particle 
+dynamics in nonlinear spectroscopy. Nature 616, 280–287 (2023). 
+https://doi.org/10.1038/s41586-023-05846-7
 
-@author: matte
+
+@author: Alessandro
 """
 
 import numpy as np
@@ -44,16 +48,7 @@ def I_p_vector(I0, N):
     Ip = 4.0 * I0 * (np.cos(angles) ** 2)
     return Ip
 
-print(w(n=2, N=4, p=1))
-print(w(n=3, N=4, p=2))
-
-I0 = 4
-N = 3   # number of p points
-
-Ip = I_p_vector(I0, N)
-print("I_p (p=1..N):", np.round(Ip, 3))
-
-#%% calculates PP_nQ given N and PP_I_p
+#calculates PP_nQ given N and PP_I_p
 
 def PP_nQ(I_values, n, N):
     """
@@ -82,15 +77,6 @@ def PP_nQ(I_values, n, N):
 
     return total
 
-# Example PP(I_p) values
-PP_I = [0.9, 0.7, 0.4, 0.1]
-N = len(PP_I)
-
-# Compute for a few n values
-for n in range(1, N + 1):
-    result = PP_nQ(PP_I, n, N)
-    print(f"PP^({n}Q)(I0) = {result:.5f}")
-
 def PP_all_nQ(I_values):
     N = len(I_values)
     I_values = np.asarray(I_values, dtype=float)
@@ -102,64 +88,10 @@ def PP_all_nQ(I_values):
 
     return W @ I_values  # matrix multiplication: gives all PP^(nQ)(I0)
 
-PP_vector = PP_all_nQ(PP_I)
-print(PP_vector)
+# Computes PP_nQ but in another way
 
 
-#%% Computes PP_nQ but in another way
-
-def PP_nQ(I0, n, N, PP_values):
-    """
-    Compute PP^(nQ)(I0) = sum_{r=n}^{N} [ C(2r, r-n) * PP^(2r+1) * I0^r ]
-    
-    Parameters
-    ----------
-    I0 : float
-        Input intensity (I₀)
-    n : int
-        Lower summation limit
-    N : int
-        Upper summation limit
-    PP_values : dict or list
-        A dictionary or list containing PP^(2r+1) values.
-        For example:
-            {3: value_for_2r+1=3, 5: value_for_2r+1=5, ...}
-        or a list such that PP_values[r] gives PP^(2r+1)
-    
-    Returns
-    -------
-    float
-        The computed PP^(nQ)(I0)
-    """
-    total = 0.0
-    for r in range(n, N + 1):
-        # get PP^(2r+1)
-        if isinstance(PP_values, dict):
-            PP_term = PP_values.get(2 * r + 1, 0)
-        else:
-            PP_term = PP_values[r] if r < len(PP_values) else 0
-        
-        term = comb(2 * r, r - n) * PP_term * (I0 ** r)
-        total += term
-    return total
-
-# Example PP^(2r+1) values for r = 1..5
-PP_vals = {
-    3: 1.0,
-    5: 0.8,
-    7: 0.5,
-    9: 0.3,
-    11: 0.2
-}
-
-I0 = 0.5
-n = 2
-N = 5
-
-result = PP_nQ(I0, n, N, PP_vals)
-print(f"PP^({n}Q)({I0}) = {result:.5f}")
-
-#%% Gives relations between PP_nQ_from_PPodd and Inverse Matrix
+# Gives relations between PP_nQ_from_PPodd and Inverse Matrix
 
 def build_C_matrix(l):
     """
@@ -201,19 +133,7 @@ def build_inverse_A(l):
     A = np.linalg.inv(C)
     return A
 
-# example PP^(2r+1) values for r=1..6 (so l=6)
-PP_odd = [1.0, 0.8, 0.5, 1, 5, 6]   # PP^(3), PP^(5), PP^(7), ...
-I0 = 0.5
-
-w = compute_PP_nQ_from_PPodd(PP_odd, I0)
-print("PP^(nQ)(I0) for n=1..6:\n", w)
-
-# If you want to see the inverse matrix (your displayed matrix):
-A = build_inverse_A(len(PP_odd))
-print("First 6x6 block of A (rounded):\n", np.round(A[:6,:6],0))
-
-
-#%% Define matrix w, the matrix to invert and the transformation between PP(Ip)
+#Define matrix w, the matrix to invert and the transformation between PP(Ip)
 
 def w_matrix(N):
     """Compute w_p^(nQ) for all n,p (both 1..N)."""
@@ -223,14 +143,6 @@ def w_matrix(N):
     delta_nN = (n == N).astype(float)
     w = (1/(2*N)) * (2 - delta_p1) / (1 + delta_nN) * np.cos(n * (p-1) * 2*np.pi / (2*N))
     return w
-
-def Lambda_inverse(N):
-    """Build Λ^{-1} matrix using binomial coefficients (upper triangular)."""
-    L_inv = np.zeros((N, N))
-    for r in range(1, N+1):
-        for n in range(r, N+1):
-            L_inv[r-1, n-1] = comb(2*n, n-r)  # note: n ≥ r
-    return L_inv
 
 def extract_PP_non_lin_orders(PP_measured, I0):
     """
@@ -253,7 +165,6 @@ def extract_PP_non_lin_orders(PP_measured, I0):
     
     # Step 1: compute matrices
     W = w_matrix(N)            # shape (N,N)
-    #L_inv = Lambda_inverse(N)  # shape (N,N)
     L_inv = build_inverse_A(N)  # shape (N,N)
     
     # Step 2: compute PP^(nQ)(I0) = W @ PP(I_p)
@@ -271,22 +182,7 @@ def extract_PP_non_lin_orders(PP_measured, I0):
     
     return PP_odd, PP_nQ, W, L_inv
 
-# Example usage
-N = 3
-I0 = 0.5
-# measured PP(I_p) values (example numbers)
-PP_measured = np.array([4.00, 3.00, 1.00])
-
-PP_odd, PP_nQ, W, L_inv = extract_PP_non_lin_orders(PP_measured, I0)
-
-print("w matrix (W):\n", np.round(W, 4))
-print("\nLambda inverse matrix:\n", L_inv)
-print("\nTotal inverse matrix:\n", L_inv @ W)
-print("\nPP^(nQ)(I0):\n", np.round(PP_nQ, 6))
-print("\nRecovered nonlinear coefficients PP^(3), PP^(5), ...:\n", np.round(PP_odd, 6))
-
-
-#%% Do the trasformation vectorially
+# Do the trasformation vectorially
 
 def calculate_transformation_matrix(N):
     W = w_matrix(N)            # shape (N,N)
