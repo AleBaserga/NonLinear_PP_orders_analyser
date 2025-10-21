@@ -66,7 +66,7 @@ I0 = 0.5
 # measured PP(I_p) values (example numbers)
 PP_measured = np.array([4.00, 3.00, 1.00])
 
-PP_odd, PP_nQ, W, L_inv = nlPP.extract_PP_non_lin_orders(PP_measured, I0)
+PP_odd, PP_nQ, W, L_inv = nlPP.extract_PP_non_lin_orders(PP_measured)
 
 print("w matrix (W):\n", np.round(W, 4))
 print("\nLambda inverse matrix:\n", L_inv)
@@ -77,4 +77,54 @@ print("\nRecovered nonlinear coefficients PP^(3), PP^(5), ...:\n", np.round(PP_o
 
 #%% Do the trasformation vectorially
 
+path = r"C:\Users\aless\OneDrive - Politecnico di Milano\PhD_backup\Experiments\NonLinear_PP\Data\AleMatteo Stratus Long\d251008\N3"
+fileNames = ["\d25100801", "\d25100802", "\d25100803"]
+list_maps = []
+
+for fileName in fileNames:
+    loadPath = path + fileName + "_average" + ".dat"
+    
+    data_s = utilsPP.load_dat(loadPath, asClass= False)
+    t = data_s[0]
+    wl = data_s[1]
+    map_data = data_s[2]
+    
+    
+    # Cut spectra
+    wl_l = [600, 745]
+    wl_cut, map_cut = utilsPP.cut_spectra(wl, map_data, wl_l)
+
+    # bkg cleaning
+    t_bkg = -900
+    map_cut_2 = utilsPP.remove_bkg(t, map_cut, t_bkg)
+
+    # plot maps
+    fig, ax, c = utilsPP.plot_map(t, wl_cut, map_cut_2)
+    ax.axvline(x = t[utilsPP.find_in_vector(t, t_bkg)], color="black")
+    ax.set_title(f"{fileName}")
+    
+    # plot spectra
+    delays_to_plot = [1000, 5000, 10000, 100000]
+    fig, ax = utilsPP.plot_spectra(t, wl_cut, map_cut_2, delays_to_plot)
+    ax.set_title(f"{fileName}")
+
+    
+    list_maps.append(map_cut_2)
+
+PP_data_stack_2 = nlPP.stack_matrices(list_maps)
+
+M_inv = nlPP.calculate_transformation_matrix(PP_data_stack_2.shape[0])
+
+non_lin_maps = nlPP.apply_matrix_to_stack(M_inv, PP_data_stack_2)
+
+for i in range(non_lin_maps.shape[0]):
+    map_nl = non_lin_maps[i]
+    
+    fig, ax, c = utilsPP.plot_map(t, wl_cut, map_nl)
+    ax.set_title(f"nl: {i}")
+    
+    # plot spectra
+    delays_to_plot = [1000, 5000, 10000, 100000]
+    fig, ax = utilsPP.plot_spectra(t, wl_cut, map_nl, delays_to_plot)
+    ax.set_title(f"nl: {i}")
 

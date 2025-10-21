@@ -144,7 +144,7 @@ def w_matrix(N):
     w = (1/(2*N)) * (2 - delta_p1) / (1 + delta_nN) * np.cos(n * (p-1) * 2*np.pi / (2*N))
     return w
 
-def extract_PP_non_lin_orders(PP_measured, I0):
+def extract_PP_non_lin_orders(PP_measured):
     """
     Reconstruct first N nonlinear coefficients PP^(2r+1) from measured PP(I_p).
     
@@ -152,8 +152,6 @@ def extract_PP_non_lin_orders(PP_measured, I0):
     ----------
     PP_measured : array-like of shape (N,)
         Measured PP(I_p) datasets (one per intensity)
-    I0 : float
-        Reference intensity I0
         
     Returns
     -------
@@ -182,7 +180,7 @@ def extract_PP_non_lin_orders(PP_measured, I0):
     
     return PP_odd, PP_nQ, W, L_inv
 
-# Do the trasformation vectorially
+#%% Do the trasformation vectorially
 
 def calculate_transformation_matrix(N):
     W = w_matrix(N)            # shape (N,N)
@@ -199,9 +197,14 @@ def stack_matrices(*matrices: np.ndarray) -> np.ndarray:
     into a single 3D array of shape (N, n, m),
     where N is the number of input matrices.
 
+    Works both for:
+        stack_matrices(A, B, C)
+    and
+        stack_matrices([A, B, C])
+
     Parameters
     ----------
-    *matrices : np.ndarray
+    *matrices : np.ndarray or list of np.ndarray
         Variable number of 2D numpy arrays of the same shape.
 
     Returns
@@ -209,12 +212,21 @@ def stack_matrices(*matrices: np.ndarray) -> np.ndarray:
     stacked : np.ndarray
         3D numpy array of shape (N, n, m)
     """
-    # Check that all inputs have the same shape
+    # If user passed a list or tuple of arrays, unpack it
+    if len(matrices) == 1 and isinstance(matrices[0], (list, tuple, np.ndarray)):
+        # If it's a list/tuple of arrays, use that list
+        if all(isinstance(x, np.ndarray) for x in matrices[0]):
+            matrices = matrices[0]
+
+    # Verify all inputs are numpy arrays
+    matrices = [np.asarray(mat) for mat in matrices]
+
+    # Check shapes
     shapes = [mat.shape for mat in matrices]
     if len(set(shapes)) != 1:
         raise ValueError(f"All input matrices must have the same shape, got {shapes}")
 
-    # Stack along a new first axis
+    # Stack along a new axis (shape = N x n x m)
     stacked = np.stack(matrices, axis=0).astype(np.float64)
     return stacked
 
