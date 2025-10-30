@@ -11,6 +11,9 @@ https://doi.org/10.1038/s41586-023-05846-7
 
 import numpy as np
 from math import comb  # for binomial coefficients
+from typing import Sequence, Optional, Tuple, List, Text
+import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # calculates w and I_p with functions
 def w(n, N, p):
@@ -274,3 +277,158 @@ def apply_matrix_to_stack(M, V, use_reshape=True):
 
     return R
 
+# Plotting functions
+
+def compute_clims_auto_single(map_mat: np.ndarray, factor: float = 0.6) -> Tuple[float, float]:
+    """
+    Compute symmetric color limits from a single 2D matrix.
+    Default: ±factor * max(abs(map_mat)).
+    """
+    a = np.nanmax(np.abs(map_mat))
+    v = float(a) if np.isfinite(a) else 0.0
+    vmax = v * factor
+    vmin = -vmax
+    return vmin, vmax
+
+def compute_clims_auto_global(stack: np.ndarray, factor: float = 0.6) -> Tuple[float, float]:
+    """
+    Compute symmetric color limits across the whole stack array (N, wl, t).
+    """
+    a = np.nanmax(np.abs(stack))
+    v = float(a) if np.isfinite(a) else 0.0
+    vmax = v * factor
+    vmin = -vmax
+    return vmin, vmax
+
+def plot_stack_maps(
+    t: np.ndarray,
+    wl: np.ndarray,
+    stack: np.ndarray,
+    rows: int = 2,
+    cols: int = 4,
+    cmap: str = "PuOr_r",
+    clims: Text or Sequence[float] = "auto",
+    clims_mode: str = "per_map",   # "per_map" or "global"
+    titles: Optional[Sequence[str]] = None,
+    figsize_per_subplot: Tuple[float,float] = (4.0, 3.0),
+    show_colorbar: bool = True,
+    colorbar_pad: float = 0.02,
+    colorbar_size: float = "5%",
+    tight: bool = True
+) -> List[plt.Figure]:
+    """
+    Plot a stack of maps (N, n_wl, n_t) into one or more figures with row x col subplots per figure.
+
+    Parameters
+    ----------
+    t : 1D array length n_t
+        Horizontal axis (time/delay).
+    wl : 1D array length n_wl
+        Vertical axis (wavelength).
+    stack : 3D array shape (N, n_wl, n_t)
+        Stack of maps to plot.
+    rows, cols : int
+        Number of subplot rows and columns per figure.
+    cmap : str
+        Colormap for pcolormesh.
+    clims : "auto" or [vmin, vmax]
+        If "auto", clims computed either per-map or globally depending on clims_mode.
+        If array-like of length 2, used as [vmin, vmax] for all maps.
+    clims_mode : {"per_map", "global"}
+        If "per_map": compute auto clims separately for each map.
+        If "global": compute one clims across all maps and use same for all.
+    titles : optional sequence of strings length N
+        Titles for each subplot.
+    figsize_per_subplot : (w, h)
+        Size of each subplot; total figure size = (cols*w, rows*h).
+    show_colorbar : bool
+        Add a colorbar to the right of each subplot.
+    colorbar_pad : float
+        Padding between axes and colorbar.
+    colorbar_size : str or float
+        Size of colorbar (accepted by make_axes_locatable.append_axes).
+    tight : bool
+        Call tight_layout on figure at the end.
+
+    Returns
+    -------
+    figs : list of matplotlib.figure.Figure
+        List of created figure objects (one per page).
+    """
+    stack = np.asarray(stack)
+    if stack.ndim != 3:
+        raise ValueError("stack must be 3D with shape (N, n_wl, n_t).")
+    N, n_wl, n_t = stack.shape
+
+    # Titles
+    if titles is None:
+        titles = [f"map {i}" for i in range(N)]
+    else:
+        if len(titles) < N:
+            # pad with default titles
+            titles = list(titles) + [f"map {i}" for i in range(len(titles), N)]
+
+    # Prepare clims
+    if isinstance(clims, str) and clims.lower() == "auto":
+        if clims_mode == "global":
+            vmin_global, vmax_global = compute_clims_auto_global(stack, factor=0.6)
+            clims_all = [(vmin_global, vmax_global)] * N
+        elif clims_mode == "per_map":
+            clims_all = [compute_clims_auto_single(stack[i], factor=0.6) for i in range(N)]
+        else:
+            raise ValueError("clims_mode must be 'per_map' or 'global'")
+    else:
+        clims_arr = np.asarray(clims, dtype=float).flatten()
+        if clims_arr.size != 2:
+            raise ValueError("clims must be 'auto' or a sequence of two numbers [vmin, vmax].")
+        vmin_use, vmax_use = np.sort(clims_arr)
+        clims_all = [(vmin_use, vmax_use)] * N
+
+    figs = []
+    per_fig = rows * cols
+    n_pages = (N + per_fig - 1) // per_fig
+
+    # compute figure size
+    fig_w = cols * figsize_per_subplot[0]
+    fig_h = rows * figsize_per_subplot[1]
+
+    map_index = 0
+    for page in range(n_pages):
+        fig, axs = plt.subplots(rows, cols, figsize=(fig_w, fig_h))
+        # flatten axes list for easy indexing
+        axs_flat = np.array(axs).reshape(-1)
+        # For subplots that will remain empty, we will turn off axis later
+        for slot in range(per_fig):
+            if map_index >= N:
+                break
+            ax = axs_flat[slot]
+            m = stack[map_index]
+            vmin, vmax = clims_all[map_index]
+
+            # pcolormesh: t (n_t), wl (n_wl) must correspond map shape (n_wl, n_t)
+            pcm = ax.pcolormesh(t, wl, m, shading="auto", cmap=cmap, vmin=vmin, vmax=vmax)
+            ax.set_title(titles[map_index])
+            ax.set_xlabel("Delay (fs)")
+            ax.set_ylabel("Wavelength (nm)")
+            ax.set_xlim([np.min(t), np.max(t)])
+            ax.set_ylim([np.min(wl), np.max(wl)])
+
+            if show_colorbar:
+                # place a colorbar to the right of this axis without overlapping the next subplot
+                divider = make_axes_locatable(ax)
+                cax = divider.append_axes("right", size=colorbar_size, pad=colorbar_pad)
+                fig.colorbar(pcm, cax=cax)
+            map_index += 1
+
+        # turn off remaining axes (if any)
+        for i_empty in range(map_index % per_fig, per_fig):
+            # if map_index % per_fig == 0 this loop will turn off all axes on last page only when needed
+            ax_empty = axs_flat[i_empty]
+            ax_empty.axis("off")
+
+        if tight:
+            plt.tight_layout()
+
+        figs.append(fig)
+
+    return figs

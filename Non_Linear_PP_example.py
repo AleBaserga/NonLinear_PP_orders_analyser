@@ -6,6 +6,7 @@ This is an example script of usage of Non_Linear_PP_module
 """
 
 import numpy as np
+import matplotlib.pyplot as plt
 
 # here is our non_linear module
 import Non_Linear_PP_module as nlPP
@@ -17,6 +18,8 @@ sys.path.append(r"C:\Users\aless\Documents\Python Scripts\Reader_PP")
 
 import PP_utils_module as utilsPP
 
+# Close all previous plots
+plt.close("all")
 
 # calculates w and I_p with functions
 
@@ -121,10 +124,118 @@ for i in range(non_lin_maps.shape[0]):
     map_nl = non_lin_maps[i]
     
     fig, ax, c = utilsPP.plot_map(t, wl_cut, map_nl)
-    ax.set_title(f"nl: {i}")
+    ax.set_title(f"non linear order: {2*(i+1) +1}")
     
     # plot spectra
     delays_to_plot = [1000, 5000, 10000, 100000]
     fig, ax = utilsPP.plot_spectra(t, wl_cut, map_nl, delays_to_plot)
-    ax.set_title(f"nl: {i}")
+    ax.set_title(f"non linear order: {2*(i+1) +1}")
 
+#%% Let's do it with functions
+
+def load_n_clean_maps(path_folder, file_name_vector, wl_l, t_bkg):
+    
+    for i in range(len(file_name_vector)):
+        
+        base_file = file_name_vector[i]
+        
+        # Load and stack
+        t, wl, stacked, files_used = utilsPP.load_and_stack_related_maps(path_folder, base_file)
+
+        # Cut
+        wl_cut, stacked_cut = utilsPP.cut_spectra_stacked(wl, stacked, wl_l)
+
+        # find the spikes
+        spike_mask, detected_indices, wl_idx = utilsPP.detect_spikes_stack_at_wl(stacked_cut, wl_cut, 530.0, window=11, thresh=15.0, min_distance=1)
+        
+        """
+        # plot overlay with spikes marked
+        fig2, ax2 = utilsPP.plot_spike_mask_overlay(t, wl_cut, stacked_cut, spike_mask, wl_choice=630)
+        """
+        
+        # clean the spikes
+        cleaned = utilsPP.replace_spikes_stack_with_median_spectrum(stacked_cut, spike_mask)        
+        
+        map_cut = utilsPP.mean_stack(cleaned)
+        
+        #bkg
+        map_cut = utilsPP.remove_bkg(t, map_cut, t_bkg)
+        
+        #smoothing
+        map_cut = utilsPP.smooth_along_axis(map_cut, axis=0, method="gaussian", window=3, sigma=2)
+        
+        if i == 0:
+            map_cut_mat = np.zeros((len(file_name_vector), *map_cut.shape), dtype=np.float64)
+        
+        #append the results
+        map_cut_mat[i, :] = map_cut
+        
+    return t, wl_cut, map_cut_mat
+
+# define a list of your files and powers
+path_folder = r"C:\Users\aless\OneDrive - Politecnico di Milano\PhD_backup\Experiments\NonLinear_PP\Data\AleMatteo Stratus Long\d251009\PM6"
+#file_name_vector = ["d25100909", "d25100913", "d25100913", "d25100913","d25100913"]
+file_seed = "d251009"
+#file_nums = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 23, 24]
+#powers = [2.35, 1.55, 4.0, 10, 16, 12, 4, 13.657, 8.0, 2.343, 1.072, 14.928, 6.0, 2.0, 0.4]
+
+file_nums = [13, 14, 15]
+powers = [16, 12, 4]
+#file_nums = [13, 16, 17, 18]
+#powers = [16, 13.657, 8, 2.343]
+file_nums = [13, 20, 14, 17, 15, 19]
+powers = [16, 14.928, 12, 8, 4, 1.072]
+file_nums = [17, 22, 23]
+powers = [8, 6, 2]
+
+file_name_vector = utilsPP.generate_string_list(file_seed, file_nums)
+
+# call the loading function
+t_bkg = -1000
+wl_l = [500, 740]
+
+# load all
+t, wl, stacked_maps = load_n_clean_maps(path_folder, file_name_vector, wl_l, t_bkg)
+
+list_maps = []
+for i in range(stacked_maps.shape[0]):
+    map_cut = stacked_maps[i]
+
+    # plot maps
+    
+    fig, ax, c = utilsPP.plot_map(t, wl, map_cut)
+    ax.axvline(x = t[utilsPP.find_in_vector(t, t_bkg)], color="black")
+    ax.set_title(f"{file_name_vector[i]}")
+    
+    # plot spectra
+    delays_to_plot = [1000, 5000, 10000, 100000]
+    fig, ax = utilsPP.plot_spectra(t, wl, map_cut, delays_to_plot)
+    ax.set_title(f"{file_name_vector[i]}")
+
+    
+    list_maps.append(map_cut)
+
+PP_data_stack_2 = nlPP.stack_matrices(list_maps)
+
+M_inv = nlPP.calculate_transformation_matrix(PP_data_stack_2.shape[0])
+
+non_lin_maps = nlPP.apply_matrix_to_stack(M_inv, PP_data_stack_2)
+
+for i in range(non_lin_maps.shape[0]):
+    map_nl = non_lin_maps[i]
+    
+    map_nl = utilsPP.smooth_along_axis(map_nl, axis=0, method="uniform", window=3)
+    
+    # plot map
+    fig, ax, c = utilsPP.plot_map(t, wl, map_nl)
+    ax.set_title(f"non linear order: {2*(i+1) +1}")
+    
+    # plot spectra
+    delays_to_plot = [1000, 5000, 10000, 100000]
+    fig, ax = utilsPP.plot_spectra(t, wl, map_nl, delays_to_plot)
+    ax.set_title(f"non linear order: {2*(i+1) +1}")
+    
+    # plot dynamics
+    wls_to_plot = [580, 635]
+    fig, ax = utilsPP.plot_dynamics(t, wl, map_nl, wls_to_plot)
+    ax.set_title(f"non linear order: {2*(i+1) +1}")
