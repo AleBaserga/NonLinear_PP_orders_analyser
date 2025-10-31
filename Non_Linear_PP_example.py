@@ -185,8 +185,8 @@ powers = [16, 12, 4]
 #powers = [16, 13.657, 8, 2.343]
 file_nums = [13, 20, 14, 17, 15, 19]
 powers = [16, 14.928, 12, 8, 4, 1.072]
-file_nums = [17, 22, 23]
-powers = [8, 6, 2]
+#file_nums = [17, 22, 23]
+#powers = [8, 6, 2]
 
 file_name_vector = utilsPP.generate_string_list(file_seed, file_nums)
 
@@ -202,7 +202,7 @@ for i in range(stacked_maps.shape[0]):
     map_cut = stacked_maps[i]
 
     # plot maps
-    
+    """
     fig, ax, c = utilsPP.plot_map(t, wl, map_cut)
     ax.axvline(x = t[utilsPP.find_in_vector(t, t_bkg)], color="black")
     ax.set_title(f"{file_name_vector[i]}")
@@ -211,7 +211,7 @@ for i in range(stacked_maps.shape[0]):
     delays_to_plot = [1000, 5000, 10000, 100000]
     fig, ax = utilsPP.plot_spectra(t, wl, map_cut, delays_to_plot)
     ax.set_title(f"{file_name_vector[i]}")
-
+    """
     
     list_maps.append(map_cut)
 
@@ -239,3 +239,218 @@ for i in range(non_lin_maps.shape[0]):
     wls_to_plot = [580, 635]
     fig, ax = utilsPP.plot_dynamics(t, wl, map_nl, wls_to_plot)
     ax.set_title(f"non linear order: {2*(i+1) +1}")
+    
+#%% plot nl orders
+
+def smooth_moving_average(y, window_size=5):
+    """
+    Smooth a 1D array using a centered moving average.
+    """
+    if window_size < 2:
+        return y  # no smoothing
+
+    kernel = np.ones(window_size) / window_size
+    y_smooth = np.convolve(y, kernel, mode='same')
+    return y_smooth
+
+        
+def plot_dynamics_nl_orders(
+        t: np.ndarray,
+        wl: np.ndarray,
+        stack: np.ndarray,
+        wls_to_plot,
+        nl_order_index,
+        normalize = True,
+        i_to_norm = -1):
+    
+    """
+    TODO: fix this description
+    """
+    
+    figs = []
+    axs = []
+    
+    cmap_name = "plasma"
+    colors = utilsPP.create_diverging_colormap(len(nl_order_index), cmap_name)
+    
+    for wl_to_plot in wls_to_plot:
+        for i in range(len(nl_order_index)):
+            nl_index = nl_order_index[i]
+            if i == 0:
+                fig, ax = plt.subplots(1, 1, figsize=(8, 3))
+                figs.append(fig)
+                axs.append(ax)
+            
+            # --- Extract dynamics ---
+            dynamic, i_taken = utilsPP.extract_dyns(wl, stack[nl_index], wl_to_plot)
+            wl_c = wl[i_taken]
+            
+            dynamic = np.squeeze(dynamic)
+            
+            dynamic = smooth_moving_average(dynamic, 1)
+            
+            if normalize:
+                if i_to_norm == -1:
+                    i_max = np.argmax(np.abs(dynamic))
+                else:
+                    #i_max = i_to_norm
+                    i_max = np.arange(i_to_norm - 5, i_to_norm + 5, 1)
+                    
+                dynamic = dynamic / (np.mean(dynamic[i_max]))
+                        
+            ax.plot(t, dynamic,
+                    label=f'nl order: {2*(nl_index + 1) +1} ',
+                    color=colors[i])
+    
+        # --- Labels and formatting ---
+        ax.set_xlabel("Delay (fs)")
+        
+        if normalize:
+            ax.set_ylabel("ΔT/T (norm.)")
+        else:
+            ax.set_ylabel("ΔT/T (%)")
+            
+        ax.set_xlim([np.min(t), np.max(t)])
+        ax.set_title(f'{wl_c[0]:.2f} nm')
+        ax.legend(fontsize='small')
+
+        plt.tight_layout()
+        plt.show()
+    
+    return figs, axs
+
+            
+def load_low_fluence(path_folder, file_name_vector, wl_l, t_bkg):
+    
+    for i in range(len(file_name_vector)):
+        
+        base_file = file_name_vector[i]
+        
+        # Load and stack
+        t, wl, stacked, files_used = utilsPP.load_and_stack_related_maps(path_folder, base_file)
+
+        # Cut
+        wl_cut, stacked_cut = utilsPP.cut_spectra_stacked(wl, stacked, wl_l)
+
+        # find the spikes
+        spike_mask, detected_indices, wl_idx = utilsPP.detect_spikes_stack_at_wl(stacked_cut, wl_cut, 530.0, window=11, thresh=15.0, min_distance=1)
+        
+        """
+        # plot overlay with spikes marked
+        fig2, ax2 = utilsPP.plot_spike_mask_overlay(t, wl_cut, stacked_cut, spike_mask, wl_choice=630)
+        """
+        
+        # clean the spikes
+        cleaned = utilsPP.replace_spikes_stack_with_median_spectrum(stacked_cut, spike_mask)        
+        
+        map_cut = utilsPP.mean_stack(cleaned)
+        
+        #bkg
+        map_cut = utilsPP.remove_bkg(t, map_cut, t_bkg)
+        
+        #smoothing
+        map_cut = utilsPP.smooth_along_axis(map_cut, axis=0, method="gaussian", window=3, sigma=2)
+        
+        if i == 0:
+            map_cut_mat = np.zeros((len(file_name_vector), *map_cut.shape), dtype=np.float64)
+        
+        #append the results
+        map_cut_mat[i, :] = map_cut
+        
+    map_cut_mat = np.squeeze(map_cut_mat)
+    return t, wl_cut, map_cut_mat
+
+
+def plot_dynamics_comparison(
+        t: np.ndarray,
+        wl: np.ndarray,
+        stack: np.ndarray,
+        map_lf: np.ndarray,
+        wls_to_plot,
+        normalize = True,
+        i_to_norm = -1):
+    
+    """
+    TODO: fix this description
+    """
+    
+    figs = []
+    axs = []
+    
+    cmap_name = "inferno"
+    colors = utilsPP.create_diverging_colormap(2, cmap_name)
+    
+    for wl_to_plot in wls_to_plot:
+        nl_index = 0
+        
+        fig, ax = plt.subplots(1, 1, figsize=(8, 3))
+        figs.append(fig)
+        axs.append(ax)
+    
+        # --- Extract dynamics ---
+        dynamic_nl, i_taken = utilsPP.extract_dyns(wl, stack[nl_index], wl_to_plot)
+        wl_c = wl[i_taken]
+        
+        dynamic = np.squeeze(dynamic_nl)
+        
+        dynamic = smooth_moving_average(dynamic, 1)
+        
+        if normalize:
+            if i_to_norm == -1:
+                i_max = np.argmax(np.abs(dynamic))
+            else:
+                #i_max = i_to_norm
+                i_max = np.arange(i_to_norm - 5, i_to_norm + 5, 1)
+                
+            dynamic = dynamic / (np.mean(dynamic[i_max]))
+                    
+        ax.plot(t, dynamic,
+                label=f'nl order: {2*(nl_index + 1) +1} ',
+                color=colors[0])
+        
+        # --- Extract dynamics ---
+        dynamic_lf, i_taken = utilsPP.extract_dyns(wl, map_lf, wl_to_plot)
+        wl_c = wl[i_taken]
+        
+        dynamic = np.squeeze(dynamic_lf)
+        
+        dynamic = smooth_moving_average(dynamic, 1)
+        
+        if normalize:
+            if i_to_norm == -1:
+                i_max = np.argmax(np.abs(dynamic))
+            else:
+                #i_max = i_to_norm
+                i_max = np.arange(i_to_norm - 5, i_to_norm + 5, 1)
+                
+            dynamic = dynamic / (np.mean(dynamic[i_max]))
+                    
+        ax.plot(t, dynamic,
+                label='low fluece',
+                color=colors[1])
+    
+        # --- Labels and formatting ---
+        ax.set_xlabel("Delay (fs)")
+        
+        if normalize:
+            ax.set_ylabel("ΔT/T (norm.)")
+        else:
+            ax.set_ylabel("ΔT/T (%)")
+            
+        ax.set_xlim([np.min(t), np.max(t)])
+        ax.set_title(f'{wl_c[0]:.2f} nm')
+        ax.legend(fontsize='small')
+
+        plt.tight_layout()
+        plt.show()
+    
+    return figs, axs
+    
+wls_to_plot = [635]
+nl_order_index = [0, 1]
+plot_dynamics_nl_orders(t, wl, non_lin_maps, wls_to_plot, nl_order_index, normalize = True, i_to_norm=60)
+
+file_name_vector = ["d25100924.dat"]
+t, wl, map_lf = load_low_fluence(path_folder, file_name_vector, wl_l, t_bkg)
+
+plot_dynamics_comparison(t, wl, non_lin_maps, map_lf, wls_to_plot, normalize = True, i_to_norm=60)
