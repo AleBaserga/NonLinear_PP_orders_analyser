@@ -15,6 +15,9 @@ from typing import Sequence, Optional, Tuple, List, Text
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
+import sys
+sys.path.append(r"C:\Users\aless\Documents\Python Scripts\Reader_PP")
+
 import PP_utils_module as utilsPP
 
 # calculates w and I_p with functions
